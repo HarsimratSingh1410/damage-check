@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+
+  # ── Damage-Check API ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: damage-check:latest
+    container_name: damage_check_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist heatmaps and crops on the host
+      - ./output:/app/output
+    environment:
+      # Stage selection (override via .env)
+      DAMAGE_SEGMENTER: ${DAMAGE_SEGMENTER:-rembg}
+      DAMAGE_ALIGNER:   ${DAMAGE_ALIGNER:-sift}
+      DAMAGE_COMPARATOR: ${DAMAGE_COMPARATOR:-ssim}
+      DAMAGE_ENABLE_VLM: ${DAMAGE_ENABLE_VLM:-false}
+      # Storage
+      DAMAGE_STORAGE_BACKEND: ${DAMAGE_STORAGE_BACKEND:-local}
+      DAMAGE_OUTPUT_DIR: /app/output
+      # Thresholds
+      DAMAGE_BLUR_THRESHOLD:        ${DAMAGE_BLUR_THRESHOLD:-100.0}
+      DAMAGE_DAMAGE_SCORE_THRESHOLD: ${DAMAGE_DAMAGE_SCORE_THRESHOLD:-0.4}
+      DAMAGE_ALIGNMENT_MIN_SCORE:   ${DAMAGE_ALIGNMENT_MIN_SCORE:-0.3}
+      DAMAGE_MIN_REGION_PIXELS:     ${DAMAGE_MIN_REGION_PIXELS:-200}
+      # AWS (only needed when DAMAGE_STORAGE_BACKEND=s3)
+      AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION:    ${AWS_DEFAULT_REGION:-}
+      DAMAGE_S3_BUCKET:      ${DAMAGE_S3_BUCKET:-}
+      DAMAGE_S3_PREFIX:      ${DAMAGE_S3_PREFIX:-damage-check/}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
