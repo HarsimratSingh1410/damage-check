@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from ..core.interfaces import Storage
+from ..config import settings as cfg
 
 
 class S3Storage(Storage):
@@ -26,23 +27,28 @@ class S3Storage(Storage):
     def __init__(
         self,
         bucket: Optional[str] = None,
-        prefix: str = "",
+        prefix: Optional[str] = None,
         region: Optional[str] = None,
+        s3_client: Optional[object] = None,
     ):
-        try:
-            import boto3
-        except ImportError as e:
-            raise ImportError(
-                "boto3 is required for S3Storage. Install it with: pip install boto3"
-            ) from e
-
-        self.bucket = bucket or os.environ.get("DAMAGE_S3_BUCKET", "")
+        self.bucket = bucket or cfg.s3_bucket or os.environ.get("DAMAGE_S3_BUCKET", "")
         if not self.bucket:
             raise ValueError(
                 "S3 bucket name must be provided via constructor or DAMAGE_S3_BUCKET env var."
             )
-        self.prefix = prefix.rstrip("/") + "/" if prefix else ""
-        self._s3 = boto3.client("s3", region_name=region)
+        prefix_val = prefix if prefix is not None else cfg.s3_prefix
+        self.prefix = prefix_val.rstrip("/") + "/" if prefix_val else ""
+
+        if s3_client is not None:
+            self._s3 = s3_client
+        else:
+            try:
+                import boto3
+            except ImportError as e:
+                raise ImportError(
+                    "boto3 is required for S3Storage. Install it with: pip install boto3"
+                ) from e
+            self._s3 = boto3.client("s3", region_name=region)
 
     # ------------------------------------------------------------------
     # Storage interface
@@ -82,6 +88,8 @@ class S3Storage(Storage):
             os.unlink(f.name)
         else:
             # Treat as a local path (useful during testing)
+            if not os.path.exists(url):
+                raise FileNotFoundError(f"Could not load image (file not found): {url}")
             img = cv2.imread(url)
 
         if img is None:

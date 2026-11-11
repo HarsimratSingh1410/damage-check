@@ -35,6 +35,8 @@ class LocalStorage(Storage):
             img = cv2.imread(tmp_path)
             os.unlink(tmp_path)
         else:
+            if not os.path.exists(url):
+                raise FileNotFoundError(f"Could not load image (file not found): {url}")
             img = cv2.imread(url)
 
         if img is None:

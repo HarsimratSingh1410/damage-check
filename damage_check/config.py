@@ -27,9 +27,17 @@ class Settings(BaseSettings):
     # Storage / output
     storage_backend: str = "local"      # "local" | "s3"
     output_dir: str = "output"
+    s3_bucket: str = ""
+    s3_prefix: str = "damage-check/"
 
     # Device
     device: str = "cpu"                 # "cpu" | "cuda"
+
+    # Phase 3 model settings
+    dino_model: str = "dinov2_vits14"
+    sam_checkpoint: str = ""
+    sam_model_type: str = "vit_b"
+    loftr_pretrained: str = "outdoor"
 
     model_config = {
         "env_prefix": "DAMAGE_",

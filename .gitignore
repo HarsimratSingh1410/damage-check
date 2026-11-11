@@ -32,6 +32,8 @@ ENV/
 
 # Pipeline output (images, heatmaps, crops)
 output/
+demo_output/
+demo_images/
 
 # Testing / coverage
 .pytest_cache/
@@ -52,3 +54,4 @@ Thumbs.db
 
 # Docker
 *.tar
+

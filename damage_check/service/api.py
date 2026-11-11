@@ -6,6 +6,7 @@ import asyncio
 import uuid
 from typing import Dict, List, Optional
 
+import numpy as np
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -118,10 +119,10 @@ async def _run_job(job: JobInput, webhook: Optional[WebhookConfig]) -> None:
     """Run the pipeline in a thread pool executor (keeps the event loop free)."""
     _jobs[job.job_id]["status"] = "running"
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result: JobResult = await loop.run_in_executor(None, _sync_run, job)
         _jobs[job.job_id]["status"] = result.status.value
-        _jobs[job.job_id]["result"] = result.model_dump()
+        _jobs[job.job_id]["result"] = result.model_dump(mode="json")
         if webhook and webhook.callback_url:
             await _notify_webhook(webhook.callback_url, result)
     except Exception as exc:
@@ -129,8 +130,8 @@ async def _run_job(job: JobInput, webhook: Optional[WebhookConfig]) -> None:
         _jobs[job.job_id]["error"] = str(exc)
 
 
-def _sync_run(job: JobInput) -> JobResult:
-    """Build the pipeline from config and run it synchronously."""
+def get_pipeline():
+    """Build the pipeline from config."""
     from ..core.pipeline import Pipeline
 
     # Storage backend
@@ -148,6 +149,12 @@ def _sync_run(job: JobInput) -> JobResult:
     elif cfg.segmenter == "sam":
         from ..stages.segment_sam import SAMSegmenter
         segmenter = SAMSegmenter()
+    elif cfg.segmenter in ("none", "passthrough", "dummy"):
+        from ..core.interfaces import Segmenter
+        class PassthroughSegmenter(Segmenter):
+            def segment(self, image: np.ndarray) -> np.ndarray:
+                return np.ones(image.shape[:2], dtype=np.uint8) * 255
+        segmenter = PassthroughSegmenter()
     else:
         raise ValueError(f"Unknown segmenter: {cfg.segmenter!r}")
 
@@ -177,13 +184,18 @@ def _sync_run(job: JobInput) -> JobResult:
         from ..stages.review_vlm import VLMReviewer
         reviewer = VLMReviewer()
 
-    pipeline = Pipeline(
+    return Pipeline(
         segmenter=segmenter,
         aligner=aligner,
         comparator=comparator,
         storage=storage,
         reviewer=reviewer,
     )
+
+
+def _sync_run(job: JobInput) -> JobResult:
+    """Run pipeline synchronously."""
+    pipeline = get_pipeline()
     return pipeline.run(job)
 
 
@@ -192,6 +204,6 @@ async def _notify_webhook(url: str, result: JobResult) -> None:
     try:
         import httpx
         async with httpx.AsyncClient() as client:
-            await client.post(url, json=result.model_dump(), timeout=10)
+            await client.post(url, json=result.model_dump(mode="json"), timeout=10)
     except Exception:
         pass
